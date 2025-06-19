@@ -7,7 +7,7 @@ section .data
     shape_prompt db "Please select a shape (1-10):", 0xA
     shape_prompt_len equ $ - shape_prompt
 
-    size_prompt db "Enter the size of the shape:", 0xA
+    size_prompt db "Enter the size of the shape (3-20):", 0xA
     size_prompt_len equ $ - size_prompt
 
     shape_menu db "1. Pixel", 0xA
@@ -21,6 +21,12 @@ section .data
                db "9. Arrow", 0xA
                db "10. Diamond", 0xA
     shape_menu_len equ $ - shape_menu
+
+    error_message db "Invalid shape choice! Please enter a number between 1-12.", 0xA
+    error_message_len equ $ - error_message
+
+    size_error_message db "Invalid size! Please enter a number between 3-20.", 0xA
+    size_error_message_len equ $ - size_error_message
 
     star db "* "
     star_len equ $ - star
@@ -79,9 +85,9 @@ convert_choice:
     cmp rdx, 0                 ; Check for null terminator
     je choice_done             ; If null, we're done
     cmp rdx, '0'               ; Check if character is below '0'
-    jb choice_done             ; If below '0', not a digit
+    jb show_error_and_restart  ; If below '0', not a digit
     cmp rdx, '9'               ; Check if character is above '9'
-    ja choice_done             ; If above '9', not a digit
+    ja show_error_and_restart  ; If above '9', not a digit
     
     sub rdx, '0'               ; Convert ASCII to number
     imul rax, 10               ; Multiply current result by 10
@@ -90,8 +96,15 @@ convert_choice:
     jmp convert_choice         ; Continue loop
 
 choice_done:
+    ; Validate shape choice (1-10)
+    cmp rax, 1
+    jl show_error_and_restart  ; if choice < 1
+    cmp rax, 12
+    jg show_error_and_restart  ; if choice > 10
+    
     mov [shape_choice], al     ; Store the converted choice
 
+size_prmpt:
     ; Print size prompt
     mov rax, 1
     mov rdi, 1
@@ -106,7 +119,7 @@ choice_done:
     mov rdx, 10
     syscall
 
-    ; Convert ASCII string to number (FIXED VERSION)
+    ; Convert ASCII string to number
     xor rax, rax               ; Clear result
     xor rcx, rcx               ; Clear index counter
     mov rsi, shape_size        ; Point to input buffer
@@ -114,13 +127,13 @@ choice_done:
 convert_size:
     movzx rdx, byte [rsi+rcx]  ; Load next character
     cmp rdx, 0xA               ; Check for newline
-    je convert_done            ; If newline, we're done
+    je size_converted          ; If newline, we're done
     cmp rdx, 0                 ; Check for null terminator
-    je convert_done            ; If null, we're done
+    je size_converted          ; If null, we're done
     cmp rdx, '0'               ; Check if character is below '0'
-    jb convert_done            ; If below '0', not a digit
+    jb show_size_error         ; If below '0', not a digit
     cmp rdx, '9'               ; Check if character is above '9'
-    ja convert_done            ; If above '9', not a digit
+    ja show_size_error         ; If above '9', not a digit
     
     sub rdx, '0'               ; Convert ASCII to number
     imul rax, 10               ; Multiply current result by 10
@@ -129,7 +142,13 @@ convert_size:
     cmp rcx, 4                 ; Prevent buffer overflow (max 4 digits)
     jl convert_size            ; Continue if within bounds
 
-convert_done:
+size_converted:
+    ; Check if shape_size is valid (3-20)
+    cmp rax, 3
+    jl show_size_error         ; if size < 3
+    cmp rax, 20
+    jg show_size_error         ; if size > 20
+    
     mov [shape_size], rax
 
     ; Jump to appropriate shape drawing function
@@ -154,7 +173,23 @@ convert_done:
     je draw_arrow
     cmp al, 10
     je draw_diamond
-    jmp exit_program
+    jmp show_error_and_restart ; This should theoretically never be reached
+
+show_size_error:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, size_error_message
+    mov rdx, size_error_message_len
+    syscall
+    jmp size_prmpt
+
+show_error_and_restart:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, error_message
+    mov rdx, error_message_len
+    syscall
+    jmp _start
 
 ; Algorithm for the shapes
 draw_pixel:
